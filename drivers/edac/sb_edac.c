@@ -739,8 +739,8 @@ static struct sbridge_dev *alloc_sbridge_dev(u8 bus,
 	if (!sbridge_dev)
 		return NULL;
 
-	sbridge_dev->pdev = kzalloc(sizeof(*sbridge_dev->pdev) * table->n_devs,
-				   GFP_KERNEL);
+	sbridge_dev->pdev = kcalloc(table->n_devs, sizeof(*sbridge_dev->pdev),
+				    GFP_KERNEL);
 	if (!sbridge_dev->pdev) {
 		kfree(sbridge_dev);
 		return NULL;
@@ -2934,6 +2934,7 @@ static void sbridge_mce_output_error(struct mem_ctl_info *mci,
 		recoverable = GET_BITFIELD(m->status, 56, 56);
 
 	if (uncorrected_error) {
+		core_err_cnt = 1;
 		if (ripv) {
 			type = "FATAL";
 			tp_event = HW_EVENT_ERR_FATAL;

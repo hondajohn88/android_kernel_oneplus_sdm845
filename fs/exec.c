@@ -67,10 +67,23 @@
 
 #include <trace/events/sched.h>
 
+#include <linux/adj_chain.h>
+
 int suid_dumpable = 0;
 
 static LIST_HEAD(formats);
 static DEFINE_RWLOCK(binfmt_lock);
+
+#define ZYGOTE32_BIN	"/system/bin/app_process32"
+#define ZYGOTE64_BIN	"/system/bin/app_process64"
+static atomic_t zygote32_pid;
+static atomic_t zygote64_pid;
+
+bool is_zygote_pid(pid_t pid)
+{
+	return atomic_read(&zygote32_pid) == pid ||
+		atomic_read(&zygote64_pid) == pid;
+}
 
 void __register_binfmt(struct linux_binfmt * fmt, int insert)
 {
@@ -1160,7 +1173,14 @@ static int de_thread(struct task_struct *tsk)
 
 		list_replace_rcu(&leader->tasks, &tsk->tasks);
 		list_replace_init(&leader->sibling, &tsk->sibling);
-
+#ifdef CONFIG_ADJ_CHAIN
+		tsk->adj_chain_status |= 1 << AC_PROM_LEADER;
+#endif
+		adj_chain_detach(tsk);
+		adj_chain_attach(tsk);
+#ifdef CONFIG_ADJ_CHAIN
+		tsk->adj_chain_status &= ~(1 << AC_PROM_LEADER);
+#endif
 		tsk->group_leader = tsk;
 		leader->group_leader = tsk;
 
@@ -1228,15 +1248,14 @@ killed:
 	return -EAGAIN;
 }
 
-char *get_task_comm(char *buf, struct task_struct *tsk)
+char *__get_task_comm(char *buf, size_t buf_size, struct task_struct *tsk)
 {
-	/* buf must be at least sizeof(tsk->comm) in size */
 	task_lock(tsk);
-	strncpy(buf, tsk->comm, sizeof(tsk->comm));
+	strncpy(buf, tsk->comm, buf_size);
 	task_unlock(tsk);
 	return buf;
 }
-EXPORT_SYMBOL_GPL(get_task_comm);
+EXPORT_SYMBOL_GPL(__get_task_comm);
 
 /*
  * These functions flushes out all traces of the currently running executable
@@ -1685,7 +1704,6 @@ static int do_execveat_common(int fd, struct filename *filename,
 	struct file *file;
 	struct files_struct *displaced;
 	int retval;
-	bool is_su;
 
 	if (IS_ERR(filename))
 		return PTR_ERR(filename);
@@ -1784,16 +1802,15 @@ static int do_execveat_common(int fd, struct filename *filename,
 
 	would_dump(bprm, bprm->file);
 
-	/* exec_binprm can release file and it may be freed */
-	is_su = d_is_su(file->f_path.dentry);
-
 	retval = exec_binprm(bprm);
 	if (retval < 0)
 		goto out;
 
-	if (is_su && capable(CAP_SYS_ADMIN)) {
-		current->flags |= PF_SU;
-		su_exec();
+	if (capable(CAP_SYS_ADMIN)) {
+		if (unlikely(!strcmp(filename->name, ZYGOTE32_BIN)))
+			atomic_set(&zygote32_pid, current->pid);
+		else if (unlikely(!strcmp(filename->name, ZYGOTE64_BIN)))
+			atomic_set(&zygote64_pid, current->pid);
 	}
 
 	/* execve succeeded */

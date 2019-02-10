@@ -264,10 +264,15 @@ int update_devfreq(struct devfreq *devfreq)
 	if (!devfreq->governor)
 		return -EINVAL;
 
-	/* Reevaluate the proper frequency */
-	err = devfreq->governor->get_target_freq(devfreq, &freq);
-	if (err)
-		return err;
+	if (devfreq->max_boost) {
+		/* Use the max freq for max boosts */
+		freq = ULONG_MAX;
+	} else {
+		/* Reevaluate the proper frequency */
+		err = devfreq->governor->get_target_freq(devfreq, &freq, &flags);
+		if (err)
+			return err;
+	}
 
 	/*
 	 * Adjust the frequency with user freq and QoS.
@@ -466,7 +471,8 @@ void devfreq_interval_update(struct devfreq *devfreq, unsigned int *delay)
 		mutex_unlock(&devfreq->lock);
 		cancel_delayed_work_sync(&devfreq->work);
 		mutex_lock(&devfreq->lock);
-		if (!devfreq->stop_polling)
+		if (!devfreq->stop_polling
+			&& !delayed_work_pending(&devfreq->work))
 			queue_delayed_work(devfreq_wq, &devfreq->work,
 			      msecs_to_jiffies(devfreq->profile->polling_ms));
 	}
@@ -603,12 +609,12 @@ struct devfreq *devfreq_add_device(struct device *dev,
 		goto err_dev;
 	}
 
-	devfreq->trans_table =	devm_kzalloc(&devfreq->dev, sizeof(unsigned int) *
-						devfreq->profile->max_state *
+	devfreq->trans_table =	devm_kzalloc(&devfreq->dev,
+						   array3_size(sizeof(unsigned int), devfreq->profile->max_state, devfreq->profile->max_state),
+						   GFP_KERNEL);
+	devfreq->time_in_state = devm_kcalloc(&devfreq->dev,
 						devfreq->profile->max_state,
-						GFP_KERNEL);
-	devfreq->time_in_state = devm_kzalloc(&devfreq->dev, sizeof(unsigned long) *
-						devfreq->profile->max_state,
+						sizeof(unsigned long),
 						GFP_KERNEL);
 	devfreq->last_stat_updated = jiffies;
 
@@ -1112,6 +1118,10 @@ static ssize_t min_freq_store(struct device *dev, struct device_attribute *attr,
 	unsigned long value;
 	int ret;
 	unsigned long max;
+
+	/* Minfreq is managed by devfreq_boost */
+	if (df->is_boost_device)
+		return count;
 
 	ret = sscanf(buf, "%lu", &value);
 	if (ret != 1)

@@ -21,6 +21,15 @@
 
 #include "internals.h"
 
+struct irq_desc_list {
+	struct list_head list;
+	struct irq_desc *desc;
+} perf_crit_irqs = {
+	.list = LIST_HEAD_INIT(perf_crit_irqs.list)
+};
+
+static DEFINE_RAW_SPINLOCK(perf_irqs_lock);
+
 #ifdef CONFIG_IRQ_FORCED_THREADING
 __read_mostly bool force_irqthreads;
 
@@ -633,6 +642,49 @@ int irq_set_irq_wake(unsigned int irq, unsigned int on)
 }
 EXPORT_SYMBOL(irq_set_irq_wake);
 
+static int mask_wake_irq_set(const char *buff, const struct kernel_param *kp)
+{
+	char buf[256], *b;
+	char *irq_num_str;
+	unsigned int irq_num;
+	int ret;
+
+	pr_info("mask_wake_irq_set: %s\n", buff);
+	strlcpy(buf, buff, sizeof(buf));
+	b = strim(buf);
+
+	while (b) {
+		irq_num_str = strsep(&b, ",");
+		if (irq_num_str) {
+			ret = kstrtoint(irq_num_str, 0, &irq_num);
+			if (ret < 0)
+				return ret;
+
+			pr_info("mask_wake_irq_set irq_num: %d\n", irq_num);
+			irq_set_irq_wake(irq_num, 0);
+		}
+	}
+
+	return 0;
+}
+
+static int mask_wake_irq_get(char *buff, const struct kernel_param *kp)
+{
+	int cnt = 0;
+
+	cnt += snprintf(buff + cnt, PAGE_SIZE - cnt, "haha\n");
+
+	return cnt;
+}
+
+static const struct kernel_param_ops mask_wake_irq_ops = {
+	.set = mask_wake_irq_set,
+	.get = mask_wake_irq_get,
+};
+
+module_param_cb(mask_wake_irq, &mask_wake_irq_ops, NULL, 0644);
+
+
 /*
  * Internal function that tells the architecture code whether a
  * particular irq has been exclusively allocated or is available
@@ -881,6 +933,9 @@ irq_forced_thread_fn(struct irq_desc *desc, struct irqaction *action)
 
 	local_bh_disable();
 	ret = action->thread_fn(action->irq, action->dev_id);
+	if (ret == IRQ_HANDLED)
+		atomic_inc(&desc->threads_handled);
+
 	irq_finalize_oneshot(desc, action);
 	local_bh_enable();
 	return ret;
@@ -897,6 +952,9 @@ static irqreturn_t irq_thread_fn(struct irq_desc *desc,
 	irqreturn_t ret;
 
 	ret = action->thread_fn(action->irq, action->dev_id);
+	if (ret == IRQ_HANDLED)
+		atomic_inc(&desc->threads_handled);
+
 	irq_finalize_oneshot(desc, action);
 	return ret;
 }
@@ -974,8 +1032,6 @@ static int irq_thread(void *data)
 		irq_thread_check_affinity(desc, action);
 
 		action_ret = handler_fn(desc, action);
-		if (action_ret == IRQ_HANDLED)
-			atomic_inc(&desc->threads_handled);
 		if (action_ret == IRQ_WAKE_THREAD)
 			irq_wake_secondary(desc, action);
 
@@ -1029,6 +1085,13 @@ static int irq_setup_forced_threading(struct irqaction *new)
 	if (new->flags & (IRQF_NO_THREAD | IRQF_PERCPU | IRQF_ONESHOT))
 		return 0;
 
+	/*
+	 * No further action required for interrupts which are requested as
+	 * threaded interrupts already
+	 */
+	if (new->handler == irq_default_primary_handler)
+		return 0;
+
 	new->flags |= IRQF_ONESHOT;
 
 	/*
@@ -1036,7 +1099,7 @@ static int irq_setup_forced_threading(struct irqaction *new)
 	 * thread handler. We force thread them as well by creating a
 	 * secondary action.
 	 */
-	if (new->handler != irq_default_primary_handler && new->thread_fn) {
+	if (new->handler && new->thread_fn) {
 		/* Allocate the secondary action */
 		new->secondary = kzalloc(sizeof(struct irqaction), GFP_KERNEL);
 		if (!new->secondary)
@@ -1113,6 +1176,72 @@ setup_irq_thread(struct irqaction *new, unsigned int irq, bool secondary)
 	return 0;
 }
 
+static void add_desc_to_perf_list(struct irq_desc *desc)
+{
+	struct irq_desc_list *item;
+	unsigned long flags;
+
+	item = kmalloc(sizeof(*item), GFP_ATOMIC);
+	if (WARN_ON(!item))
+		return;
+
+	item->desc = desc;
+
+	raw_spin_lock_irqsave(&perf_irqs_lock, flags);
+	list_add(&item->list, &perf_crit_irqs.list);
+	raw_spin_unlock_irqrestore(&perf_irqs_lock, flags);
+}
+
+static void affine_one_perf_thread(struct task_struct *t)
+{
+	t->flags |= PF_PERF_CRITICAL;
+	set_cpus_allowed_ptr(t, cpu_perf_mask);
+}
+
+static void unaffine_one_perf_thread(struct task_struct *t)
+{
+	t->flags &= ~PF_PERF_CRITICAL;
+	set_cpus_allowed_ptr(t, cpu_all_mask);
+}
+
+void unaffine_perf_irqs(void)
+{
+	struct irq_desc_list *data;
+	unsigned long outer_flags;
+
+	raw_spin_lock_irqsave(&perf_irqs_lock, outer_flags);
+	list_for_each_entry(data, &perf_crit_irqs.list, list) {
+		struct irq_desc *desc = data->desc;
+		unsigned long flags;
+
+		raw_spin_lock_irqsave(&desc->lock, flags);
+		irq_set_affinity_locked(&desc->irq_data, cpu_all_mask, true);
+		if (desc->action->thread)
+			unaffine_one_perf_thread(desc->action->thread);
+		raw_spin_unlock_irqrestore(&desc->lock, flags);
+	}
+	raw_spin_unlock_irqrestore(&perf_irqs_lock, outer_flags);
+}
+
+void reaffine_perf_irqs(void)
+{
+	struct irq_desc_list *data;
+	unsigned long outer_flags;
+
+	raw_spin_lock_irqsave(&perf_irqs_lock, outer_flags);
+	list_for_each_entry(data, &perf_crit_irqs.list, list) {
+		struct irq_desc *desc = data->desc;
+		unsigned long flags;
+
+		raw_spin_lock_irqsave(&desc->lock, flags);
+		irq_set_affinity_locked(&desc->irq_data, cpu_perf_mask, true);
+		if (desc->action->thread)
+			affine_one_perf_thread(desc->action->thread);
+		raw_spin_unlock_irqrestore(&desc->lock, flags);
+	}
+	raw_spin_unlock_irqrestore(&perf_irqs_lock, outer_flags);
+}
+
 /*
  * Internal function to register an irqaction - typically used to
  * allocate special interrupts that are part of the architecture.
@@ -1180,6 +1309,9 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 			if (ret)
 				goto out_thread;
 		}
+
+		if (new->flags & IRQF_PERF_CRITICAL)
+			affine_one_perf_thread(new->thread);
 	}
 
 	if (!alloc_cpumask_var(&mask, GFP_KERNEL)) {
@@ -1342,7 +1474,14 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 		}
 
 		/* Set default affinity mask once everything is setup */
-		setup_affinity(desc, mask);
+		if (new->flags & IRQF_PERF_CRITICAL) {
+			add_desc_to_perf_list(desc);
+			irqd_set(&desc->irq_data, IRQD_AFFINITY_MANAGED);
+			irq_set_affinity_locked(&desc->irq_data,
+				cpu_perf_mask, true);
+		} else {
+			setup_affinity(desc, mask);
+		}
 
 	} else if (new->flags & IRQF_TRIGGER_MASK) {
 		unsigned int nmsk = new->flags & IRQF_TRIGGER_MASK;

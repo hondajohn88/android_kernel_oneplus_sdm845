@@ -327,8 +327,12 @@ struct ieee80211_regdomain *iwl_mvm_get_regdomain(struct wiphy *wiphy,
 		goto out;
 	}
 
-	if (changed)
-		*changed = (resp->status == MCC_RESP_NEW_CHAN_PROFILE);
+	if (changed) {
+		u32 status = le32_to_cpu(resp->status);
+
+		*changed = (status == MCC_RESP_NEW_CHAN_PROFILE ||
+			    status == MCC_RESP_ILLEGAL);
+	}
 
 	regd = iwl_parse_nvm_mcc_info(mvm->trans->dev, mvm->cfg,
 				      __le32_to_cpu(resp->n_channels),
@@ -2849,9 +2853,7 @@ static int iwl_mvm_mac_set_key(struct ieee80211_hw *hw,
 
 			mvmsta = iwl_mvm_sta_from_mac80211(sta);
 			WARN_ON(rcu_access_pointer(mvmsta->ptk_pn[keyidx]));
-			ptk_pn = kzalloc(sizeof(*ptk_pn) +
-					 mvm->trans->num_rx_queues *
-						sizeof(ptk_pn->q[0]),
+			ptk_pn = kzalloc(struct_size(ptk_pn, q, mvm->trans->num_rx_queues),
 					 GFP_KERNEL);
 			if (!ptk_pn) {
 				ret = -ENOMEM;
@@ -3975,10 +3977,6 @@ static void iwl_mvm_mac_sta_statistics(struct ieee80211_hw *hw,
 		sinfo->signal_avg = mvmsta->avg_energy;
 		sinfo->filled |= BIT(NL80211_STA_INFO_SIGNAL_AVG);
 	}
-
-	if (!fw_has_capa(&mvm->fw->ucode_capa,
-			 IWL_UCODE_TLV_CAPA_RADIO_BEACON_STATS))
-		return;
 
 	/* if beacon filtering isn't on mac80211 does it anyway */
 	if (!(vif->driver_flags & IEEE80211_VIF_BEACON_FILTER))

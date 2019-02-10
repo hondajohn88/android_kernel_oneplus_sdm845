@@ -446,7 +446,7 @@ static int prepare_qmi_response(struct snd_usb_substream *subs,
 	struct usb_host_interface *alts;
 	struct usb_interface_descriptor *altsd;
 	struct usb_host_endpoint *ep;
-	struct uac_format_type_i_continuous_descriptor *fmt;
+	struct uac_format_type_i_continuous_descriptor *fmt = NULL;
 	struct uac_format_type_i_discrete_descriptor *fmt_v1;
 	struct uac_format_type_i_ext_descriptor *fmt_v2;
 	struct uac1_as_header_descriptor *as;
@@ -711,8 +711,9 @@ skip_sync:
 		uadev[card_num].num_intf =
 			subs->dev->config->desc.bNumInterfaces;
 		uadev[card_num].info =
-			kzalloc(sizeof(struct intf_info) *
-			uadev[card_num].num_intf, GFP_KERNEL);
+			kcalloc(uadev[card_num].num_intf,
+				sizeof(struct intf_info),
+				GFP_KERNEL);
 		if (!uadev[card_num].info) {
 			ret = -ENOMEM;
 			goto unmap_sync;
@@ -985,8 +986,8 @@ static int handle_uaudio_stream_req(void *req_h, void *req)
 	direction = req_msg->usb_token & SND_PCM_STREAM_DIRECTION;
 	pcm_dev_num = (req_msg->usb_token & SND_PCM_DEV_NUM_MASK) >> 8;
 	pcm_card_num = (req_msg->usb_token & SND_PCM_CARD_NUM_MASK) >> 16;
-
-	pr_debug("%s:card#:%d dev#:%d dir:%d en:%d fmt:%d rate:%d #ch:%d\n",
+//buqing.wang@mutimedia ,open to debug usb audio,20180710
+	pr_info("%s:card#:%d dev#:%d dir:%d en:%d fmt:%d rate:%d #ch:%d\n",
 		__func__, pcm_card_num, pcm_dev_num, direction, req_msg->enable,
 		req_msg->audio_format, req_msg->bit_rate,
 		req_msg->number_of_ch);

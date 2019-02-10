@@ -285,7 +285,7 @@ enum {
 	MAX_TYPES
 };
 
-static const struct apsd_result const smblib_apsd_results[] = {
+static const struct apsd_result smblib_apsd_results[] = {
 	[UNKNOWN] = {
 		.name	= "UNKNOWN",
 		.bit	= 0,
@@ -5466,6 +5466,7 @@ static void op_handle_usb_removal(struct smb_charger *chg)
 	chg->dash_check_count = 0;
 	vote(chg->fcc_votable,
 	DEFAULT_VOTER, true, SDP_CURRENT_UA);
+	set_sdp_current(chg, USBIN_500MA);
 	op_battery_temp_region_set(chg, BATT_TEMP_INVALID);
 }
 
@@ -6934,7 +6935,7 @@ static void trigger_check_charger(struct smb_charger *chg)
 }
 
 
-static int usb_enum_check(const char *val, const struct kernel_param *kp)
+static int usb_enum_check(const char *val, struct kernel_param *kp)
 {
 	const struct apsd_result *apsd_result;
 	struct smb_charger *chg = g_chg;
@@ -7115,6 +7116,7 @@ int plugin_update(struct smb_charger *chg)
 
 	return rc;
 }
+
 
 static void op_otg_switch(struct work_struct *work)
 {

@@ -431,7 +431,7 @@ static void test_mb_ahash_speed(const char *algo, unsigned int sec,
 	unsigned int i, j, k;
 	int ret;
 
-	data = kzalloc(sizeof(*data) * 8, GFP_KERNEL);
+	data = kcalloc(8, sizeof(*data), GFP_KERNEL);
 	if (!data)
 		return;
 
@@ -728,6 +728,9 @@ static void test_ahash_speed_common(const char *algo, unsigned int secs,
 			       speed[i].blen, TVMEMSIZE * PAGE_SIZE);
 			break;
 		}
+
+		if (speed[i].klen)
+			crypto_ahash_setkey(tfm, tvmem[0], speed[i].klen);
 
 		pr_info("test%3u "
 			"(%5u byte blocks,%5u bytes per update,%4u updates): ",

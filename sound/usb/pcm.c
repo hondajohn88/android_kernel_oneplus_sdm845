@@ -545,6 +545,12 @@ static int set_format(struct snd_usb_substream *subs, struct audioformat *fmt)
 			dev_err(&dev->dev,
 				"%d:%d: usb_set_interface failed (%d)\n",
 				fmt->iface, fmt->altsetting, err);
+			if ((USB_ID_VENDOR(subs->stream->chip->usb_id)
+				== 0x2717) &&
+				(USB_ID_PRODUCT(subs->stream->chip->usb_id)
+				== 0x3801)) {
+				kick_usbpd_vbus_sm();
+			}
 			return -EIO;
 		}
 		dev_dbg(&dev->dev, "setting usb interface %d:%d\n",
@@ -1191,7 +1197,7 @@ static int snd_usb_pcm_check_knot(struct snd_pcm_runtime *runtime,
 		return 0;
 
 	subs->rate_list.list = rate_list =
-		kmalloc(sizeof(int) * count, GFP_KERNEL);
+		kmalloc_array(count, sizeof(int), GFP_KERNEL);
 	if (!subs->rate_list.list)
 		return -ENOMEM;
 	subs->rate_list.count = count;
@@ -1379,7 +1385,7 @@ static void retire_capture_urb(struct snd_usb_substream *subs,
 		if (bytes % (runtime->sample_bits >> 3) != 0) {
 			int oldbytes = bytes;
 			bytes = frames * stride;
-			dev_warn(&subs->dev->dev,
+			dev_warn_ratelimited(&subs->dev->dev,
 				 "Corrected urb data len. %d->%d\n",
 							oldbytes, bytes);
 		}

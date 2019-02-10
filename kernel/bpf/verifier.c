@@ -3225,7 +3225,7 @@ static int replace_map_fd_with_map_ptr(struct bpf_verifier_env *env)
 			/* hold the map. If the program is rejected by verifier,
 			 * the map will be released by release_maps() or it
 			 * will be used by the valid program until it's unloaded
-			 * and all maps are released in free_bpf_prog_info()
+			 * and all maps are released in free_used_maps()
 			 */
 			map = bpf_map_inc(map, false);
 			if (IS_ERR(map)) {
@@ -3281,7 +3281,7 @@ static int adjust_insn_aux_data(struct bpf_verifier_env *env, u32 prog_len,
 
 	if (cnt == 1)
 		return 0;
-	new_data = vzalloc(sizeof(struct bpf_insn_aux_data) * prog_len);
+	new_data = vzalloc(array_size(prog_len, sizeof(struct bpf_insn_aux_data)));
 	if (!new_data)
 		return -ENOMEM;
 	memcpy(new_data, old_data, sizeof(struct bpf_insn_aux_data) * off);
@@ -3524,8 +3524,7 @@ int bpf_check(struct bpf_prog **prog, union bpf_attr *attr)
 	if (!env)
 		return -ENOMEM;
 
-	env->insn_aux_data = vzalloc(sizeof(struct bpf_insn_aux_data) *
-				     (*prog)->len);
+	env->insn_aux_data = vzalloc(array_size(sizeof(struct bpf_insn_aux_data), (*prog)->len));
 	ret = -ENOMEM;
 	if (!env->insn_aux_data)
 		goto err_free_env;
@@ -3629,7 +3628,7 @@ free_log_buf:
 		vfree(log_buf);
 	if (!env->prog->aux->used_maps)
 		/* if we didn't copy map pointers into bpf_prog_info, release
-		 * them now. Otherwise free_bpf_prog_info() will release them.
+		 * them now. Otherwise free_used_maps() will release them.
 		 */
 		release_maps(env);
 	*prog = env->prog;
@@ -3651,8 +3650,7 @@ int bpf_analyzer(struct bpf_prog *prog, const struct bpf_ext_analyzer_ops *ops,
 	if (!env)
 		return -ENOMEM;
 
-	env->insn_aux_data = vzalloc(sizeof(struct bpf_insn_aux_data) *
-				     prog->len);
+	env->insn_aux_data = vzalloc(array_size(sizeof(struct bpf_insn_aux_data), prog->len));
 	ret = -ENOMEM;
 	if (!env->insn_aux_data)
 		goto err_free_env;

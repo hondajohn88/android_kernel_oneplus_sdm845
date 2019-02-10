@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl
 # (c) 2001, Dave Jones. (the file handling bit)
 # (c) 2005, Joel Schopp <jschopp@austin.ibm.com> (the ugly bit)
 # (c) 2007,2008, Andy Whitcroft <apw@uk.ibm.com> (new conditions, test suite)
@@ -6,6 +6,7 @@
 # Licensed under the terms of the GNU GPL License version 2
 
 use strict;
+use warnings;
 use POSIX;
 use File::Basename;
 use Cwd 'abs_path';
@@ -2734,15 +2735,15 @@ sub process {
 		}
 
 # Check for added, moved or deleted files
-		if (!$reported_maintainer_file && !$in_commit_log &&
-		    ($line =~ /^(?:new|deleted) file mode\s*\d+\s*$/ ||
-		     $line =~ /^rename (?:from|to) [\w\/\.\-]+\s*$/ ||
-		     ($line =~ /\{\s*([\w\/\.\-]*)\s*\=\>\s*([\w\/\.\-]*)\s*\}/ &&
-		      (defined($1) || defined($2))))) {
-			$reported_maintainer_file = 1;
-			WARN("FILE_PATH_CHANGES",
-			     "added, moved or deleted file(s), does MAINTAINERS need updating?\n" . $herecurr);
-		}
+#		if (!$reported_maintainer_file && !$in_commit_log &&
+#		    ($line =~ /^(?:new|deleted) file mode\s*\d+\s*$/ ||
+#		     $line =~ /^rename (?:from|to) [\w\/\.\-]+\s*$/ ||
+#		     ($line =~ /\{\s*([\w\/\.\-]*)\s*\=\>\s*([\w\/\.\-]*)\s*\}/ &&
+#		      (defined($1) || defined($2))))) {
+#			$reported_maintainer_file = 1;
+#			WARN("FILE_PATH_CHANGES",
+#			     "added, moved or deleted file(s), does MAINTAINERS need updating?\n" . $herecurr);
+#		}
 
 #check the patch for invalid author credentials
 		if ($chk_author && !($line =~ /^From:.*qca\.qualcomm\.com/) &&
@@ -3903,18 +3904,18 @@ sub process {
 		}
 
 # avoid BUG() or BUG_ON()
-		if ($line =~ /\b(?:BUG|BUG_ON)\b/) {
-			my $msg_type = \&WARN;
-			$msg_type = \&CHK if ($file);
-			&{$msg_type}("AVOID_BUG",
-				     "Avoid crashing the kernel - try using WARN_ON & recovery code rather than BUG() or BUG_ON()\n" . $herecurr);
-		}
+#		if ($line =~ /\b(?:BUG|BUG_ON)\b/) {
+#			my $msg_type = \&WARN;
+#			$msg_type = \&CHK if ($file);
+#			&{$msg_type}("AVOID_BUG",
+#				     "Avoid crashing the kernel - try using WARN_ON & recovery code rather than BUG() or BUG_ON()\n" . $herecurr);
+#		}
 
 # avoid LINUX_VERSION_CODE
-		if ($line =~ /\bLINUX_VERSION_CODE\b/) {
-			WARN("LINUX_VERSION_CODE",
-			     "LINUX_VERSION_CODE should be avoided, code should be for the version to which it is merged\n" . $herecurr);
-		}
+#		if ($line =~ /\bLINUX_VERSION_CODE\b/) {
+#			WARN("LINUX_VERSION_CODE",
+#			     "LINUX_VERSION_CODE should be avoided, code should be for the version to which it is merged\n" . $herecurr);
+#		}
 
 # check for uses of printk_ratelimit
 		if ($line =~ /\bprintk_ratelimit\s*\(/) {

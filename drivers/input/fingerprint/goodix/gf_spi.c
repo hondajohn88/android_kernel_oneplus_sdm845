@@ -44,6 +44,7 @@
 #include <linux/pm_qos.h>
 #include <linux/cpufreq.h>
 //#include <linux/wakelock.h>
+#include <linux/oneplus/boot_mode.h>
 #include "gf_spi.h"
 
 #if defined(USE_SPI_BUS)
@@ -652,12 +653,12 @@ static ssize_t screen_state_get(struct device *device,
 static DEVICE_ATTR(screen_state, 0400, screen_state_get, NULL);
 
 static ssize_t proximity_state_set(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t count)
+	struct device_attribute *attribute, const char *buffer, size_t count)
 {
 	struct gf_dev *gf_dev = dev_get_drvdata(dev);
 	int rc, val;
 
-	rc = kstrtoint(buf, 10, &val);
+	rc = kstrtoint(buffer, 10, &val);
 	if (rc)
 		return -EINVAL;
 
@@ -675,9 +676,9 @@ static ssize_t proximity_state_set(struct device *dev,
 static DEVICE_ATTR(proximity_state, S_IWUSR, NULL, proximity_state_set);
 
 static struct attribute *gf_attributes[] = {
-	&dev_attr_screen_state.attr,
-	&dev_attr_proximity_state.attr,
-	NULL
+        &dev_attr_screen_state.attr,
+        &dev_attr_proximity_state.attr,
+        NULL
 };
 
 static const struct attribute_group gf_attribute_group = {
@@ -856,6 +857,7 @@ static int gf_probe(struct platform_device *pdev)
 #endif
 {
 	struct gf_dev *gf_dev = &gf;
+	struct device *dev = &pdev->dev;
 	int status = -EINVAL;
 	unsigned long minor;
 	int i;
@@ -914,11 +916,20 @@ static int gf_probe(struct platform_device *pdev)
 	status = gf_pinctrl_init(gf_dev);
 	if (status)
 		goto err_irq;
-	status = pinctrl_select_state(gf_dev->gf_pinctrl,
-		gf_dev->gpio_state_enable);
-	if (status) {
-		pr_err("can not set %s pins\n", "fp_en_init");
-		goto error_hw;
+	if (get_boot_mode() !=  MSM_BOOT_MODE__FACTORY) {
+		status = pinctrl_select_state(gf_dev->gf_pinctrl,
+			gf_dev->gpio_state_enable);
+		if (status) {
+			pr_err("can not set %s pins\n", "fp_en_init");
+			goto error_hw;
+		}
+	} else {
+		status = pinctrl_select_state(gf_dev->gf_pinctrl,
+			gf_dev->gpio_state_disable);
+		if (status) {
+			pr_err("can not set %s pins\n", "fp_dis_init");
+			goto error_hw;
+		}
 	}
 	if (status == 0) {
 		/*input device subsystem */
@@ -965,12 +976,17 @@ static int gf_probe(struct platform_device *pdev)
 	#else
 		platform_set_drvdata(pdev, gf_dev);
 	#endif
+
+	dev_set_drvdata(dev, gf_dev);
+
 	status = sysfs_create_group(&gf_dev->spi->dev.kobj,
 			&gf_attribute_group);
+
 	if (status) {
 		pr_err("%s:could not create sysfs\n", __func__);
 		goto error_input;
 	}
+
 	pr_info("version V%d.%d.%02d\n", VER_MAJOR, VER_MINOR, PATCH_LEVEL);
 
 	return status;

@@ -399,7 +399,8 @@ megasas_alloc_cmdlist_fusion(struct megasas_instance *instance)
 	 * Allocate the dynamic array first and then allocate individual
 	 * commands.
 	 */
-	fusion->cmd_list = kzalloc(sizeof(struct megasas_cmd_fusion *) * max_cmd,
+	fusion->cmd_list = kcalloc(max_cmd,
+						sizeof(struct megasas_cmd_fusion *),
 						GFP_KERNEL);
 	if (!fusion->cmd_list) {
 		dev_err(&instance->pdev->dev,
@@ -2031,6 +2032,9 @@ megasas_build_syspd_fusion(struct megasas_instance *instance,
 		pRAID_Context->timeoutValue = cpu_to_le16(os_timeout_value);
 		pRAID_Context->VirtualDiskTgtId = cpu_to_le16(device_id);
 	} else {
+		if (os_timeout_value)
+			os_timeout_value++;
+
 		/* system pd Fast Path */
 		io_request->Function = MPI2_FUNCTION_SCSI_IO_REQUEST;
 		timeout_limit = (scmd->device->type == TYPE_DISK) ?

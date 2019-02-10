@@ -1113,7 +1113,6 @@ static struct radeon_encoder_lvds *radeon_legacy_get_lvds_info_from_regs(struct
 	fp_vert_stretch = RREG32(RADEON_FP_VERT_STRETCH);
 	fp_horz_stretch = RREG32(RADEON_FP_HORZ_STRETCH);
 
-	/* These should be fail-safe defaults, fingers crossed */
 	lvds->panel_pwr_delay = 200;
 	lvds->panel_vcc_delay = 2000;
 
@@ -2642,13 +2641,16 @@ void radeon_combios_get_power_modes(struct radeon_device *rdev)
 	rdev->pm.default_power_state_index = -1;
 
 	/* allocate 2 power states */
-	rdev->pm.power_state = kzalloc(sizeof(struct radeon_power_state) * 2, GFP_KERNEL);
+	rdev->pm.power_state = kcalloc(2, sizeof(struct radeon_power_state),
+				       GFP_KERNEL);
 	if (rdev->pm.power_state) {
 		/* allocate 1 clock mode per state */
 		rdev->pm.power_state[0].clock_info =
-			kzalloc(sizeof(struct radeon_pm_clock_info) * 1, GFP_KERNEL);
+			kcalloc(1, sizeof(struct radeon_pm_clock_info),
+				GFP_KERNEL);
 		rdev->pm.power_state[1].clock_info =
-			kzalloc(sizeof(struct radeon_pm_clock_info) * 1, GFP_KERNEL);
+			kcalloc(1, sizeof(struct radeon_pm_clock_info),
+				GFP_KERNEL);
 		if (!rdev->pm.power_state[0].clock_info ||
 		    !rdev->pm.power_state[1].clock_info)
 			goto pm_failed;

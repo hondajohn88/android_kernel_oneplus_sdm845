@@ -421,6 +421,7 @@ struct device_domain_info {
 	struct list_head global; /* link to global list */
 	u8 bus;			/* PCI bus number */
 	u8 devfn;		/* PCI devfn number */
+	u16 pfsid;		/* SRIOV physical function source ID */
 	u8 pasid_supported:3;
 	u8 pasid_enabled:1;
 	u8 pri_supported:1;
@@ -1511,6 +1512,20 @@ static void iommu_enable_dev_iotlb(struct device_domain_info *info)
 		return;
 
 	pdev = to_pci_dev(info->dev);
+	/* For IOMMU that supports device IOTLB throttling (DIT), we assign
+	 * PFSID to the invalidation desc of a VF such that IOMMU HW can gauge
+	 * queue depth at PF level. If DIT is not set, PFSID will be treated as
+	 * reserved, which should be set to 0.
+	 */
+	if (!ecap_dit(info->iommu->ecap))
+		info->pfsid = 0;
+	else {
+		struct pci_dev *pf_pdev;
+
+		/* pdev will be returned if device is not a vf */
+		pf_pdev = pci_physfn(pdev);
+		info->pfsid = PCI_DEVID(pf_pdev->bus->number, pf_pdev->devfn);
+	}
 
 #ifdef CONFIG_INTEL_IOMMU_SVM
 	/* The PCIe spec, in its wisdom, declares that the behaviour of
@@ -1576,7 +1591,8 @@ static void iommu_flush_dev_iotlb(struct dmar_domain *domain,
 
 		sid = info->bus << 8 | info->devfn;
 		qdep = info->ats_qdep;
-		qi_flush_dev_iotlb(info->iommu, sid, qdep, addr, mask);
+		qi_flush_dev_iotlb(info->iommu, sid, info->pfsid,
+				qdep, addr, mask);
 	}
 	spin_unlock_irqrestore(&device_domain_lock, flags);
 }
@@ -3147,7 +3163,7 @@ static int copy_translation_tables(struct intel_iommu *iommu)
 	/* This is too big for the stack - allocate it from slab */
 	ctxt_table_entries = ext ? 512 : 256;
 	ret = -ENOMEM;
-	ctxt_tbls = kzalloc(ctxt_table_entries * sizeof(void *), GFP_KERNEL);
+	ctxt_tbls = kcalloc(ctxt_table_entries, sizeof(void *), GFP_KERNEL);
 	if (!ctxt_tbls)
 		goto out_unmap;
 
@@ -3238,7 +3254,7 @@ static int __init init_dmars(void)
 		struct deferred_flush_data *dfd = per_cpu_ptr(&deferred_flush,
 							      cpu);
 
-		dfd->tables = kzalloc(g_num_of_iommus *
+		dfd->tables = kcalloc(g_num_of_iommus,
 				      sizeof(struct deferred_flush_table),
 				      GFP_KERNEL);
 		if (!dfd->tables) {
@@ -4166,7 +4182,7 @@ static int iommu_suspend(void)
 	unsigned long flag;
 
 	for_each_active_iommu(iommu, drhd) {
-		iommu->iommu_state = kzalloc(sizeof(u32) * MAX_SR_DMAR_REGS,
+		iommu->iommu_state = kcalloc(MAX_SR_DMAR_REGS, sizeof(u32),
 						 GFP_ATOMIC);
 		if (!iommu->iommu_state)
 			goto nomem;

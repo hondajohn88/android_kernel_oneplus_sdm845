@@ -1631,7 +1631,9 @@ next_step:
 						!is_cold_node(page)))
 				continue;
 lock_node:
-			if (!trylock_page(page))
+			if (wbc->sync_mode == WB_SYNC_ALL)
+				lock_page(page);
+			else if (!trylock_page(page))
 				continue;
 
 			if (unlikely(page->mapping != NODE_MAPPING(sbi))) {
@@ -2750,8 +2752,10 @@ static int init_free_nid_cache(struct f2fs_sb_info *sbi)
 	struct f2fs_nm_info *nm_i = NM_I(sbi);
 	int i;
 
-	nm_i->free_nid_bitmap = f2fs_kzalloc(sbi, nm_i->nat_blocks *
-				sizeof(unsigned char *), GFP_KERNEL);
+	nm_i->free_nid_bitmap =
+		f2fs_kzalloc(sbi, array_size(sizeof(unsigned char *),
+					     nm_i->nat_blocks),
+			     GFP_KERNEL);
 	if (!nm_i->free_nid_bitmap)
 		return -ENOMEM;
 

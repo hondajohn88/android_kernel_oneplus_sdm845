@@ -5681,6 +5681,8 @@ static void fg_cleanup(struct fg_chip *chip)
 {
 	int i;
 
+	if (chip->fg_psy)
+		power_supply_unregister(chip->fg_psy);
 	power_supply_unreg_notifier(&chip->nb);
 	qpnp_misc_twm_notifier_unregister(&chip->twm_nb);
 	cancel_delayed_work_sync(&chip->ttf_work);
@@ -5692,8 +5694,6 @@ static void fg_cleanup(struct fg_chip *chip)
 	cancel_work_sync(&chip->status_change_work);
 	cancel_work_sync(&chip->esr_filter_work);
 	cancel_delayed_work_sync(&chip->pl_enable_work);
-	if (chip->fg_psy)
-		power_supply_unregister(chip->fg_psy);
 
 	for (i = 0; i < FG_IRQ_MAX; i++) {
 		if (fg_irqs[i].irq)

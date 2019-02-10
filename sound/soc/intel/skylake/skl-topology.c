@@ -1737,9 +1737,10 @@ static int skl_tplg_get_token(struct device *dev,
 	switch (tkn_elem->token) {
 	case SKL_TKN_U8_IN_QUEUE_COUNT:
 		mconfig->max_in_queue = tkn_elem->value;
-		mconfig->m_in_pin = devm_kzalloc(dev, mconfig->max_in_queue *
-					sizeof(*mconfig->m_in_pin),
-					GFP_KERNEL);
+		mconfig->m_in_pin = devm_kcalloc(dev,
+						 mconfig->max_in_queue,
+						 sizeof(*mconfig->m_in_pin),
+						 GFP_KERNEL);
 		if (!mconfig->m_in_pin)
 			return -ENOMEM;
 
@@ -1747,9 +1748,10 @@ static int skl_tplg_get_token(struct device *dev,
 
 	case SKL_TKN_U8_OUT_QUEUE_COUNT:
 		mconfig->max_out_queue = tkn_elem->value;
-		mconfig->m_out_pin = devm_kzalloc(dev, mconfig->max_out_queue *
-					sizeof(*mconfig->m_out_pin),
-					GFP_KERNEL);
+		mconfig->m_out_pin = devm_kcalloc(dev,
+						  mconfig->max_out_queue,
+						  sizeof(*mconfig->m_out_pin),
+						  GFP_KERNEL);
 
 		if (!mconfig->m_out_pin)
 			return -ENOMEM;
@@ -1780,6 +1782,7 @@ static int skl_tplg_get_token(struct device *dev,
 
 	case SKL_TKN_U8_CORE_ID:
 		mconfig->core_id = tkn_elem->value;
+		break;
 
 	case SKL_TKN_U8_MOD_TYPE:
 		mconfig->m_type = tkn_elem->value;
@@ -2325,7 +2328,7 @@ static int skl_tplg_get_manifest_tkn(struct device *dev,
 
 			if (ret < 0)
 				return ret;
-			tkn_count += ret;
+			tkn_count = ret;
 
 			tuple_size += tkn_count *
 				sizeof(struct snd_soc_tplg_vendor_string_elem);

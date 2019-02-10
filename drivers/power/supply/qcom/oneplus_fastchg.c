@@ -19,6 +19,7 @@
 #include <linux/power/oem_external_fg.h>
 #include <linux/pm_qos.h>
 #include <linux/proc_fs.h>
+#include <linux/moduleparam.h>
 
 #define BYTE_OFFSET			2
 #define BYTES_TO_WRITE		16
@@ -50,6 +51,7 @@ struct fastchg_device_info {
 	bool fast_chg_allow;
 	bool firmware_already_updated;
 	bool n76e_present;
+	int mcu_reset_ahead;
 	int erase_count;
 	int addr_low;
 	int addr_high;
@@ -109,6 +111,9 @@ static void init_n76e_exist_node(void)
 	}
 }
 
+//for mcu_data irq delay issue 2017.10.14@Infi
+extern void msm_cpuidle_set_sleep_disable(bool disable);
+
 void opchg_set_data_active(struct fastchg_device_info *chip)
 {
 	gpio_direction_input(chip->ap_data);
@@ -126,8 +131,17 @@ void set_mcu_en_gpio_value(int value)
 
 void mcu_en_reset(void)
 {
-	if (gpio_is_valid(fastchg_di->mcu_en_gpio))
+	if (gpio_is_valid(fastchg_di->mcu_en_gpio)) {
 		gpio_direction_output(fastchg_di->mcu_en_gpio, 1);
+		/* @bsp 2018/09/05 FAT-4556 fix the audio heaset pop
+		 * issue when shutdown
+		 */
+		if (audio_adapter_flag) {
+			usleep_range(10000, 10001);
+			gpio_direction_output(fastchg_di->mcu_en_gpio, 0);
+			pr_info("mcu reset ahead when audio adaptor present!\n");
+		}
+	}
 }
 
 void mcu_en_gpio_set(int value)
@@ -699,6 +713,7 @@ void switch_mode_to_normal(void)
 {
 	usb_sw_gpio_set(0);
 	mcu_en_gpio_set(1);
+	msm_cpuidle_set_sleep_disable(false);
 }
 
 static void update_fast_chg_started(void)
@@ -884,6 +899,7 @@ static void adapter_update_work_func(struct work_struct *work)
 	}
 	pr_info("%s begin\n", __func__);
 	opchg_set_data_active(chip);
+	/*pm_qos_update_request(&big_cpu_update_freq, MAX_CPUFREQ);*/
 	op_bus_vote(false);
 	msleep(1000);
 	for (i = 0; i < 3; i++) {
@@ -916,6 +932,7 @@ static void adapter_update_work_func(struct work_struct *work)
 	oneplus_notify_pmic_check_charger_present();
 	oneplus_notify_dash_charger_present(false);
 	reset_mcu_and_request_irq(chip);
+	pm_qos_update_request(&big_cpu_update_freq, MIN_CPUFREQ);
 
 	pr_info("%s end update_result:%d\n",
 		__func__, update_result);
@@ -986,6 +1003,7 @@ static long  dash_dev_ioctl(struct file *filp, unsigned int cmd,
 				notify_check_usb_suspend(false, false);
 				dash_write(di, ALLOW_DATA);
 				di->fast_chg_started = true;
+				msm_cpuidle_set_sleep_disable(true);
 			}
 			break;
 		case DASH_NOTIFY_FAST_ABSENT:
@@ -1323,6 +1341,53 @@ static void check_n76e_support(struct fastchg_device_info *di)
 	}
 
 }
+
+/* @bsp 2018/09/05 FAT-4556 fix the audio heaset pop issue when shutdown*/
+static int set_mcu_reset_ahead(const char *val, struct kernel_param *kp)
+{
+	unsigned long reset_value = 0;
+	int ret = 0;
+
+	if (!audio_adapter_flag) {
+		pr_info("audio_adapter_flag = %d,return!\n",
+				audio_adapter_flag);
+		return 0;
+	}
+
+	ret = kstrtoul(val, 10, &reset_value);
+	if (ret)
+		return ret;
+
+	if (!reset_value) {
+		fastchg_di->mcu_reset_ahead = 0;
+		return 0;
+	}
+
+	if (reset_value) {
+		pr_info("reset_value:%lu\n",
+				reset_value);
+		mcu_en_reset();
+		fastchg_di->mcu_reset_ahead = reset_value;
+	}
+
+	return 0;
+}
+
+static int get_mcu_reset_status(char *buffer, struct kernel_param *kp)
+{
+	int cnt = 0;
+
+	cnt = snprintf(buffer, sizeof(char), "%d",
+				fastchg_di->mcu_reset_ahead);
+	pr_debug("mcu reset ahead status:%d\n",
+				fastchg_di->mcu_reset_ahead);
+
+	return cnt;
+}
+
+module_param_call(mcu_reset, set_mcu_reset_ahead,
+				get_mcu_reset_status, NULL, 0644);
+
 static int dash_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
 	struct fastchg_device_info *di;
@@ -1370,6 +1435,8 @@ static int dash_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		update_fireware_version_func);
 	INIT_DELAYED_WORK(&di->update_firmware, dashchg_fw_update);
 	INIT_DELAYED_WORK(&di->adapter_update_work, adapter_update_work_func);
+	pm_qos_add_request(&big_cpu_update_freq,
+		PM_QOS_C1_CPUFREQ_MIN, MIN_CPUFREQ);
 
 	init_timer(&di->watchdog);
 	di->watchdog.data = (unsigned long)di;
@@ -1422,6 +1489,11 @@ static int dash_remove(struct i2c_client *client)
 static void dash_shutdown(struct i2c_client *client)
 {
 	usb_sw_gpio_set(0);
+	/* @bsp 2018/09/05 FAT-4556 fix the audio heaset pop
+	 * issue when shutdown
+	 */
+	if (audio_adapter_flag && fastchg_di->mcu_reset_ahead)
+		return;
 	mcu_en_reset();
 }
 

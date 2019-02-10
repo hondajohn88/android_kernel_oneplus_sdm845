@@ -1093,7 +1093,7 @@ sg_ioctl(struct file *filp, unsigned int cmd_in, unsigned long arg)
 		else {
 			sg_req_info_t *rinfo;
 
-			rinfo = kzalloc(SZ_SG_REQ_INFO * SG_MAX_QUEUE,
+			rinfo = kcalloc(SG_MAX_QUEUE, SZ_SG_REQ_INFO,
 					GFP_KERNEL);
 			if (!rinfo)
 				return -ENOMEM;
@@ -2189,6 +2189,7 @@ sg_add_sfp(Sg_device * sdp)
 	write_lock_irqsave(&sdp->sfd_lock, iflags);
 	if (atomic_read(&sdp->detaching)) {
 		write_unlock_irqrestore(&sdp->sfd_lock, iflags);
+		kfree(sfp);
 		return ERR_PTR(-ENODEV);
 	}
 	list_add_tail(&sfp->sfd_siblings, &sdp->sfds);

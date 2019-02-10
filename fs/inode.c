@@ -738,7 +738,7 @@ static enum lru_status inode_lru_isolate(struct list_head *item,
 		spin_unlock(lru_lock);
 		if (remove_inode_buffers(inode)) {
 			unsigned long reap;
-			reap = invalidate_mapping_pages(&inode->i_data, 0, -1);
+			reap = invalidate_mapping_pages_without_uidlru(&inode->i_data, 0, -1);
 			if (current_is_kswapd())
 				__count_vm_events(KSWAPD_INODESTEAL, reap);
 			else
@@ -2003,8 +2003,14 @@ void inode_init_owner(struct inode *inode, const struct inode *dir,
 	inode->i_uid = current_fsuid();
 	if (dir && dir->i_mode & S_ISGID) {
 		inode->i_gid = dir->i_gid;
+
+		/* Directories are special, and always inherit S_ISGID */
 		if (S_ISDIR(mode))
 			mode |= S_ISGID;
+		else if ((mode & (S_ISGID | S_IXGRP)) == (S_ISGID | S_IXGRP) &&
+			 !in_group_p(inode->i_gid) &&
+			 !capable_wrt_inode_uidgid(dir, CAP_FSETID))
+			mode &= ~S_ISGID;
 	} else
 		inode->i_gid = current_fsgid();
 	inode->i_mode = mode;

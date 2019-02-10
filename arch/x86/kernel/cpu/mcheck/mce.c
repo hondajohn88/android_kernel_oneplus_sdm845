@@ -1456,7 +1456,7 @@ static int __mcheck_cpu_mce_banks_init(void)
 	int i;
 	u8 num_banks = mca_cfg.banks;
 
-	mce_banks = kzalloc(num_banks * sizeof(struct mce_bank), GFP_KERNEL);
+	mce_banks = kcalloc(num_banks, sizeof(struct mce_bank), GFP_KERNEL);
 	if (!mce_banks)
 		return -ENOMEM;
 
@@ -1945,7 +1945,7 @@ static ssize_t mce_chrdev_read(struct file *filp, char __user *ubuf,
 	unsigned prev, next;
 	int i, err;
 
-	cpu_tsc = kmalloc(nr_cpu_ids * sizeof(long), GFP_KERNEL);
+	cpu_tsc = kmalloc_array(nr_cpu_ids, sizeof(long), GFP_KERNEL);
 	if (!cpu_tsc)
 		return -ENOMEM;
 
@@ -2396,9 +2396,6 @@ static ssize_t store_int_with_restart(struct device *s,
 
 	if (check_interval == old_check_interval)
 		return ret;
-
-	if (check_interval < 1)
-		check_interval = 1;
 
 	mutex_lock(&mce_sysfs_mutex);
 	mce_restart();

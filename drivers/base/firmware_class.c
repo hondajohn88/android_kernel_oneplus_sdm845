@@ -298,7 +298,7 @@ static const char * const fw_path[] = {
 	"/lib/firmware/updates",
 	"/lib/firmware/" UTS_RELEASE,
 	"/lib/firmware",
-	"/vendor/etc/firmware"
+	"/vendor/etc/firmware/"
 };
 
 /*
@@ -793,7 +793,7 @@ static int fw_realloc_buffer(struct firmware_priv *fw_priv, int min_size)
 					 buf->page_array_size * 2);
 		struct page **new_pages;
 
-		new_pages = vmalloc(new_array_size * sizeof(void *));
+		new_pages = vmalloc(array_size(new_array_size, sizeof(void *)));
 		if (!new_pages) {
 			fw_load_abort(fw_priv);
 			return -ENOMEM;

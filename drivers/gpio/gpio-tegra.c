@@ -617,8 +617,10 @@ static int tegra_gpio_probe(struct platform_device *pdev)
 	if (config->debounce_supported)
 		tgi->gc.set_debounce = tegra_gpio_set_debounce;
 
-	tgi->bank_info = devm_kzalloc(&pdev->dev, tgi->bank_count *
-				      sizeof(*tgi->bank_info), GFP_KERNEL);
+	tgi->bank_info = devm_kcalloc(&pdev->dev,
+				      tgi->bank_count,
+				      sizeof(*tgi->bank_info),
+				      GFP_KERNEL);
 	if (!tgi->bank_info)
 		return -ENODEV;
 
@@ -723,4 +725,4 @@ static int __init tegra_gpio_init(void)
 {
 	return platform_driver_register(&tegra_gpio_driver);
 }
-postcore_initcall(tegra_gpio_init);
+subsys_initcall(tegra_gpio_init);

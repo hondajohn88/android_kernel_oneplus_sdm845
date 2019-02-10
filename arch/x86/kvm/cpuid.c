@@ -16,7 +16,6 @@
 #include <linux/export.h>
 #include <linux/vmalloc.h>
 #include <linux/uaccess.h>
-#include <asm/fpu/internal.h> /* For use_eager_fpu.  Ugh! */
 #include <asm/user.h>
 #include <asm/fpu/xstate.h>
 #include "cpuid.h"
@@ -114,8 +113,7 @@ int kvm_update_cpuid(struct kvm_vcpu *vcpu)
 	if (best && (best->eax & (F(XSAVES) | F(XSAVEC))))
 		best->ebx = xstate_required_size(vcpu->arch.xcr0, true);
 
-	if (use_eager_fpu())
-		kvm_x86_ops->fpu_activate(vcpu);
+	kvm_x86_ops->fpu_activate(vcpu);
 
 	/*
 	 * The existing code assumes virtual address is 48-bit in the canonical
@@ -188,8 +186,7 @@ int kvm_vcpu_ioctl_set_cpuid(struct kvm_vcpu *vcpu,
 		goto out;
 	r = -ENOMEM;
 	if (cpuid->nent) {
-		cpuid_entries = vmalloc(sizeof(struct kvm_cpuid_entry) *
-					cpuid->nent);
+		cpuid_entries = vmalloc(array_size(sizeof(struct kvm_cpuid_entry), cpuid->nent));
 		if (!cpuid_entries)
 			goto out;
 		r = -EFAULT;
@@ -749,7 +746,7 @@ int kvm_dev_ioctl_get_cpuid(struct kvm_cpuid2 *cpuid,
 		return -EINVAL;
 
 	r = -ENOMEM;
-	cpuid_entries = vzalloc(sizeof(struct kvm_cpuid_entry2) * cpuid->nent);
+	cpuid_entries = vzalloc(array_size(sizeof(struct kvm_cpuid_entry2), cpuid->nent));
 	if (!cpuid_entries)
 		goto out;
 

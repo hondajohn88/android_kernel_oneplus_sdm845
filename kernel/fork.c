@@ -77,7 +77,10 @@
 #include <linux/compiler.h>
 #include <linux/sysctl.h>
 #include <linux/kcov.h>
-#include <linux/cpufreq_times.h>
+#include <linux/cpu_input_boost.h>
+#include <linux/devfreq_boost.h>
+
+#include <linux/adj_chain.h>
 
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
@@ -184,6 +187,9 @@ static unsigned long *alloc_thread_stack_node(struct task_struct *tsk, int node)
 		if (!s)
 			continue;
 		this_cpu_write(cached_stacks[i], NULL);
+
+		/* Clear stale pointers from reused stack. */
+		memset(s->addr, 0, THREAD_SIZE);
 
 		tsk->stack_vm_area = s;
 		local_irq_enable();
@@ -340,8 +346,6 @@ void put_task_stack(struct task_struct *tsk)
 
 void free_task(struct task_struct *tsk)
 {
-	cpufreq_task_times_exit(tsk);
-
 #ifndef CONFIG_THREAD_INFO_IN_TASK
 	/*
 	 * The task is finally done with both the stack and thread_info,
@@ -355,6 +359,10 @@ void free_task(struct task_struct *tsk)
 	 */
 	WARN_ON_ONCE(atomic_read(&tsk->stack_refcount) != 0);
 #endif
+	if (tsk->nn) {
+		kfree(tsk->nn->nf);
+		kfree(tsk->nn);
+	}
 	rt_mutex_debug_task_free(tsk);
 	ftrace_graph_exit_task(tsk);
 	put_seccomp_filter(tsk);
@@ -514,8 +522,6 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 	if (err)
 		goto free_stack;
 
-	tsk->flags &= ~PF_SU;
-
 #ifdef CONFIG_SECCOMP
 	/*
 	 * We must handle setting up seccomp filters once we're under
@@ -546,7 +552,14 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 	tsk->splice_pipe = NULL;
 	tsk->task_frag.page = NULL;
 	tsk->wake_q.next = NULL;
-
+	/* Curtis, 20180109, opchain*/
+	tsk->utask_tag = 0;
+	tsk->utask_tag_base = 0;
+	tsk->etask_claim = 0;
+	tsk->claim_cpu = -1;
+	tsk->utask_slave = 0;
+	/*Curtis, 20180425, non-exist dcache*/
+	tsk->nn = NULL;
 	account_kernel_stack(tsk, 1);
 
 	kcov_task_init(tsk);
@@ -1313,7 +1326,9 @@ static int copy_sighand(unsigned long clone_flags, struct task_struct *tsk)
 		return -ENOMEM;
 
 	atomic_set(&sig->count, 1);
+	spin_lock_irq(&current->sighand->siglock);
 	memcpy(sig->action, current->sighand->action, sizeof(sig->action));
+	spin_unlock_irq(&current->sighand->siglock);
 	return 0;
 }
 
@@ -1487,6 +1502,7 @@ static __latent_entropy struct task_struct *copy_process(
 {
 	int retval;
 	struct task_struct *p;
+	struct nedf_node *nn = NULL;
 
 	if ((clone_flags & (CLONE_NEWNS|CLONE_FS)) == (CLONE_NEWNS|CLONE_FS))
 		return ERR_PTR(-EINVAL);
@@ -1550,8 +1566,6 @@ static __latent_entropy struct task_struct *copy_process(
 	 * Clear TID on mm_release()?
 	 */
 	p->clear_child_tid = (clone_flags & CLONE_CHILD_CLEARTID) ? child_tidptr : NULL;
-
-	cpufreq_task_times_init(p);
 
 	ftrace_graph_init_task(p);
 
@@ -1820,6 +1834,7 @@ static __latent_entropy struct task_struct *copy_process(
 	if (likely(p->pid)) {
 		ptrace_init_task(p, (clone_flags & CLONE_PTRACE) || trace);
 
+		adj_chain_init_list(p);
 		init_task_pid(p, PIDTYPE_PID, pid);
 		if (thread_group_leader(p)) {
 			init_task_pid(p, PIDTYPE_PGID, task_pgrp(current));
@@ -1834,9 +1849,14 @@ static __latent_entropy struct task_struct *copy_process(
 			p->signal->tty = tty_kref_get(current->signal->tty);
 			list_add_tail(&p->sibling, &p->real_parent->children);
 			list_add_tail_rcu(&p->tasks, &init_task.tasks);
+			adj_chain_attach(p);
 			attach_pid(p, PIDTYPE_PGID);
 			attach_pid(p, PIDTYPE_SID);
 			__this_cpu_inc(process_counts);
+			/*Ted, 20180425, non-exist dcache*/
+			if (!(p->flags & PF_KTHREAD))
+				nn =
+				kmalloc(sizeof(struct nedf_node), GFP_NOWAIT);
 		} else {
 			current->signal->nr_threads++;
 			atomic_inc(&current->signal->live);
@@ -1862,6 +1882,18 @@ static __latent_entropy struct task_struct *copy_process(
 
 	trace_task_newtask(p, clone_flags);
 	uprobe_copy_process(p, clone_flags);
+	if (nn) {
+		p->nn = nn;
+		nn->nf =
+		kmalloc(sizeof(struct nedf) * FILE_MAP_NUM, GFP_NOWAIT);
+		nn->nf_cnt = 0;
+		nn->nf_index = 0;
+		nn->nf_tag = 0;
+		if (nn->nf)
+			nn->is_valid = true;
+		else
+			nn->is_valid = false;
+	}
 
 	return p;
 
@@ -1956,6 +1988,12 @@ long _do_fork(unsigned long clone_flags,
 	int trace = 0;
 	long nr;
 
+	/* Boost CPU to the max for 1250 ms when userspace launches an app */
+	if (is_zygote_pid(current->pid)) {
+		cpu_input_boost_kick_max(1250);
+		devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 1250);
+	}
+
 	/*
 	 * Determine whether and which event to report to ptracer.  When
 	 * called from kernel_thread or CLONE_UNTRACED is explicitly
@@ -1985,9 +2023,10 @@ long _do_fork(unsigned long clone_flags,
 		struct completion vfork;
 		struct pid *pid;
 
-		cpufreq_task_times_alloc(p);
-
 		trace_sched_process_fork(current, p);
+
+		if (!(clone_flags & CLONE_VM))
+			p->hot_count = 0;
 
 		pid = get_task_pid(p, PIDTYPE_PID);
 		nr = pid_vnr(pid);

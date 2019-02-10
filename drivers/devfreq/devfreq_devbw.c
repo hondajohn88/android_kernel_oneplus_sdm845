@@ -29,6 +29,7 @@
 #include <trace/events/power.h>
 #include <linux/msm-bus.h>
 #include <linux/msm-bus-board.h>
+#include <linux/devfreq_boost.h>
 
 /* Has to be ULL to prevent overflow where this macro is used. */
 #define MBYTE (1ULL << 20)
@@ -176,12 +177,12 @@ int devfreq_add_devbw(struct device *dev)
 
 	if (of_find_property(dev->of_node, PROP_TBL, &len)) {
 		len /= sizeof(*data);
-		data = devm_kzalloc(dev, len * sizeof(*data), GFP_KERNEL);
+		data = devm_kcalloc(dev, len, sizeof(*data), GFP_KERNEL);
 		if (!data)
 			return -ENOMEM;
 
-		p->freq_table = devm_kzalloc(dev,
-					     len * sizeof(*p->freq_table),
+		p->freq_table = devm_kcalloc(dev,
+					     len, sizeof(*p->freq_table),
 					     GFP_KERNEL);
 		if (!p->freq_table)
 			return -ENOMEM;
@@ -210,6 +211,9 @@ int devfreq_add_devbw(struct device *dev)
 		msm_bus_scale_unregister_client(d->bus_client);
 		return PTR_ERR(d->df);
 	}
+
+	if (!strcmp(dev_name(dev), "soc:qcom,cpubw"))
+		devfreq_register_boost_device(DEVFREQ_MSM_CPUBW, d->df);
 
 	return 0;
 }

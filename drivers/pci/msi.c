@@ -493,7 +493,7 @@ static int populate_msi_sysfs(struct pci_dev *pdev)
 		return 0;
 
 	/* Dynamically create the MSI attributes for the PCI device */
-	msi_attrs = kzalloc(sizeof(void *) * (num_msi + 1), GFP_KERNEL);
+	msi_attrs = kcalloc(num_msi + 1, sizeof(void *), GFP_KERNEL);
 	if (!msi_attrs)
 		return -ENOMEM;
 	for_each_pci_msi_entry(entry, pdev) {
@@ -520,7 +520,7 @@ static int populate_msi_sysfs(struct pci_dev *pdev)
 	msi_irq_group->name = "msi_irqs";
 	msi_irq_group->attrs = msi_attrs;
 
-	msi_irq_groups = kzalloc(sizeof(void *) * 2, GFP_KERNEL);
+	msi_irq_groups = kcalloc(2, sizeof(void *), GFP_KERNEL);
 	if (!msi_irq_groups)
 		goto error_irq_group;
 	msi_irq_groups[0] = msi_irq_group;
@@ -981,7 +981,6 @@ static int __pci_enable_msix(struct pci_dev *dev, struct msix_entry *entries,
 			}
 		}
 	}
-	WARN_ON(!!dev->msix_enabled);
 
 	/* Check whether driver already requested for MSI irq */
 	if (dev->msi_enabled) {
@@ -1068,8 +1067,6 @@ static int __pci_enable_msi_range(struct pci_dev *dev, int minvec, int maxvec,
 	if (!pci_msi_supported(dev, minvec))
 		return -EINVAL;
 
-	WARN_ON(!!dev->msi_enabled);
-
 	/* Check whether driver already requested MSI-X irqs */
 	if (dev->msix_enabled) {
 		dev_info(&dev->dev,
@@ -1079,6 +1076,9 @@ static int __pci_enable_msi_range(struct pci_dev *dev, int minvec, int maxvec,
 
 	if (maxvec < minvec)
 		return -ERANGE;
+
+	if (WARN_ON_ONCE(dev->msi_enabled))
+		return -EINVAL;
 
 	nvec = pci_msi_vec_count(dev);
 	if (nvec < 0)
@@ -1137,6 +1137,9 @@ static int __pci_enable_msix_range(struct pci_dev *dev,
 
 	if (maxvec < minvec)
 		return -ERANGE;
+
+	if (WARN_ON_ONCE(dev->msix_enabled))
+		return -EINVAL;
 
 	for (;;) {
 		if (affinity) {

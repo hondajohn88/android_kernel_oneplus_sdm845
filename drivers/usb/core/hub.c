@@ -108,6 +108,10 @@ static void hub_release(struct kref *kref);
 static int usb_reset_and_verify_device(struct usb_device *udev);
 static int hub_port_disable(struct usb_hub *hub, int port1, int set_state);
 
+unsigned int connected_usb_idVendor;
+unsigned int connected_usb_idProduct;
+unsigned int connected_usb_devnum = 0xff;
+
 static inline char *portspeed(struct usb_hub *hub, int portstatus)
 {
 	if (hub_is_superspeedplus(hub->hdev))
@@ -1150,10 +1154,14 @@ static void hub_activate(struct usb_hub *hub, enum hub_activation_type type)
 
 		if (!udev || udev->state == USB_STATE_NOTATTACHED) {
 			/* Tell hub_wq to disconnect the device or
-			 * check for a new connection
+			 * check for a new connection or over current condition.
+			 * Based on USB2.0 Spec Section 11.12.5,
+			 * C_PORT_OVER_CURRENT could be set while
+			 * PORT_OVER_CURRENT is not. So check for any of them.
 			 */
 			if (udev || (portstatus & USB_PORT_STAT_CONNECTION) ||
-			    (portstatus & USB_PORT_STAT_OVERCURRENT))
+			    (portstatus & USB_PORT_STAT_OVERCURRENT) ||
+			    (portchange & USB_PORT_STAT_C_OVERCURRENT))
 				set_bit(port1, hub->change_bits);
 
 		} else if (portstatus & USB_PORT_STAT_ENABLE) {
@@ -1370,7 +1378,7 @@ static int hub_configure(struct usb_hub *hub,
 	dev_info(hub_dev, "%d port%s detected\n", maxchild,
 			(maxchild == 1) ? "" : "s");
 
-	hub->ports = kzalloc(maxchild * sizeof(struct usb_port *), GFP_KERNEL);
+	hub->ports = kcalloc(maxchild, sizeof(struct usb_port *), GFP_KERNEL);
 	if (!hub->ports) {
 		ret = -ENOMEM;
 		goto fail;
@@ -2116,6 +2124,14 @@ void usb_disconnect(struct usb_device **pdev)
 	dev_info(&udev->dev, "USB disconnect, device number %d\n",
 			udev->devnum);
 
+	if (connected_usb_devnum == udev->devnum) {
+		dev_info(&udev->dev, "xiaomi headset removed, devnum %d\n",
+		udev->devnum);
+		connected_usb_idVendor = 0;
+		connected_usb_idProduct = 0;
+		connected_usb_devnum = 0xff;
+	}
+
 	/*
 	 * Ensure that the pm runtime code knows that the USB device
 	 * is in the process of being disconnected.
@@ -2442,6 +2458,17 @@ int usb_new_device(struct usb_device *udev)
 	/* export the usbdev device-node for libusb */
 	udev->dev.devt = MKDEV(USB_DEVICE_MAJOR,
 			(((udev->bus->busnum-1) * 128) + (udev->devnum-1)));
+
+	if ((le16_to_cpu(udev->descriptor.idVendor == 0x2717)) &&
+		(le16_to_cpu(udev->descriptor.idProduct == 0x3801))) {
+		connected_usb_idVendor =
+		le16_to_cpu(udev->descriptor.idVendor);
+		connected_usb_idProduct =
+		le16_to_cpu(udev->descriptor.idProduct);
+		connected_usb_devnum = udev->devnum;
+		dev_info(&udev->dev, "xiaomi headset identified,devnum %d\n",
+		udev->devnum);
+	}
 
 	/* Tell the world! */
 	announce_device(udev);
@@ -2816,7 +2843,9 @@ static int hub_port_reset(struct usb_hub *hub, int port1,
 					USB_PORT_FEAT_C_BH_PORT_RESET);
 			usb_clear_port_feature(hub->hdev, port1,
 					USB_PORT_FEAT_C_PORT_LINK_STATE);
-			usb_clear_port_feature(hub->hdev, port1,
+
+			if (udev)
+				usb_clear_port_feature(hub->hdev, port1,
 					USB_PORT_FEAT_C_CONNECTION);
 
 			/*
@@ -3370,6 +3399,10 @@ static int wait_for_connected(struct usb_device *udev,
 	while (delay_ms < 2000) {
 		if (status || *portstatus & USB_PORT_STAT_CONNECTION)
 			break;
+		if (!port_is_power_on(hub, *portstatus)) {
+			status = -ENODEV;
+			break;
+		}
 		msleep(20);
 		delay_ms += 20;
 		status = hub_port_status(hub, *port1, portstatus, portchange);
@@ -4326,6 +4359,9 @@ static void hub_set_initial_usb2_lpm_policy(struct usb_device *udev)
 
 	if (hub)
 		connect_type = hub->ports[udev->portnum - 1]->connect_type;
+
+	if (!udev->bos)
+		return;
 
 	if ((udev->bos->ext_cap->bmAttributes & cpu_to_le32(USB_BESL_SUPPORT)) ||
 			connect_type == USB_PORT_CONNECT_TYPE_HARD_WIRED) {

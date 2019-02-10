@@ -598,8 +598,9 @@ static void ufshcd_cmd_log_init(struct ufs_hba *hba)
 {
 	/* Allocate log entries */
 	if (!hba->cmd_log.entries) {
-		hba->cmd_log.entries = kzalloc(UFSHCD_MAX_CMD_LOGGING *
-			sizeof(struct ufshcd_cmd_log_entry), GFP_KERNEL);
+		hba->cmd_log.entries = kcalloc(UFSHCD_MAX_CMD_LOGGING,
+					       sizeof(struct ufshcd_cmd_log_entry),
+					       GFP_KERNEL);
 		if (!hba->cmd_log.entries)
 			return;
 		dev_dbg(hba->dev, "%s: cmd_log.entries initialized\n",
@@ -4002,6 +4003,11 @@ int ufshcd_read_device_desc(struct ufs_hba *hba, u8 *buf, u32 size)
 	return ufshcd_read_desc(hba, QUERY_DESC_IDN_DEVICE, 0, buf, size);
 }
 
+int ufshcd_read_geometry_desc(struct ufs_hba *hba, u8 *buf, u32 size)
+{
+       return ufshcd_read_desc(hba, QUERY_DESC_IDN_GEOMETRY, 0, buf, size);
+}
+
 /**
  * ufshcd_read_string_desc - read string descriptor
  * @hba: pointer to adapter instance
@@ -4170,8 +4176,8 @@ static int ufshcd_memory_alloc(struct ufs_hba *hba)
 	}
 
 	/* Allocate memory for local reference block */
-	hba->lrb = devm_kzalloc(hba->dev,
-				hba->nutrs * sizeof(struct ufshcd_lrb),
+	hba->lrb = devm_kcalloc(hba->dev,
+				hba->nutrs, sizeof(struct ufshcd_lrb),
 				GFP_KERNEL);
 	if (!hba->lrb) {
 		dev_err(hba->dev, "LRB Memory allocation failed\n");
@@ -8068,6 +8074,9 @@ static int ufshcd_probe_hba(struct ufs_hba *hba)
 			}
 			hba->clk_scaling.is_allowed = true;
 		}
+
+
+		ufs_fill_info(hba);
 
 		scsi_scan_host(hba->host);
 		pm_runtime_put_sync(hba->dev);

@@ -1,9 +1,0 @@
-maxim,max98927L
-
-Required properties:
-- compatible : should be "maxim,max98927L"
-
-Example:
-	max98927L {
-		compatible = "maxim,max98927L";
-	};

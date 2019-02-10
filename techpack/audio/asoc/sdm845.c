@@ -527,7 +527,7 @@ static struct wcd_mbhc_config wcd_mbhc_cfg = {
 	.mono_stero_detection = false,
 	.swap_gnd_mic = NULL,
 	.hs_ext_micbias = true,
-
+/*wangdongdong@AudioDrv,20180113,modify for headset key*/
 	.key_code[0] = KEY_MEDIA,
 	.key_code[1] = KEY_VOLUMEUP,
 	.key_code[2] = KEY_VOLUMEDOWN,
@@ -3702,14 +3702,14 @@ static bool msm_swap_gnd_mic(struct snd_soc_codec *codec, bool active)
 		return false;
 
 	if (!wcd_mbhc_cfg.enable_usbc_analog) {
-		if (pdata->us_euro_gpio_value == 0) {
+		if(pdata->us_euro_gpio_value == 0) {
 			pdata->us_euro_gpio_value = 1;
 		} else {
 			pdata->us_euro_gpio_value = 0;
 		}
 		setHpSwGpioPin(pdata->us_euro_gpio_value);
 		pr_err("%s set us_euro_gpio %d active = %d\n", __func__,
-			pdata->us_euro_gpio_value, active);
+		pdata->us_euro_gpio_value, active);
 		ret = true;
 	} else {
 		/* if usbc is defined, swap using usbc_en2 */
@@ -4053,6 +4053,7 @@ static void *def_tavil_mbhc_cal(void)
 		(sizeof(btn_cfg->_v_btn_low[0]) * btn_cfg->num_btn);
 
 	
+/*wangdongdong@AudioDrv,20180113,modify for headset button*/
 	btn_high[0] = 112;
 	btn_high[1] = 220;
 	btn_high[2] = 437;
@@ -4772,9 +4773,10 @@ static int msm_mi2s_snd_startup(struct snd_pcm_substream *substream)
 		if (index == QUAT_MI2S) {
 			ret_pinctrl = msm_set_pinctrl(pinctrl_info,
 						      STATE_MI2S_ACTIVE);
-			if (ret_pinctrl)
-				pr_err("%s: MI2S TLMM pinctrl set failed with %d\n",
-					__func__, ret_pinctrl);
+/*wangdongdong@AudioDrv,20180108,remove unuseful error log*/
+		if (ret_pinctrl)
+			pr_debug("%s: MI2S TLMM pinctrl set failed with %d\n",
+				__func__, ret_pinctrl);
 		}
 	}
 clk_off:
@@ -4814,9 +4816,11 @@ static void msm_mi2s_snd_shutdown(struct snd_pcm_substream *substream)
 		if (index == QUAT_MI2S) {
 			ret_pinctrl = msm_set_pinctrl(pinctrl_info,
 						      STATE_DISABLE);
-			if (ret_pinctrl)
-				pr_err("%s: MI2S TLMM pinctrl set failed with %d\n",
-					__func__, ret_pinctrl);
+/*wangdongdong@AudioDrv,20180108,remove unuseful error log*/
+		if (ret_pinctrl)
+			pr_debug("%s: MI2S TLMM pinctrl set failed with %d\n",
+				__func__, ret_pinctrl);
+
 		}
 	}
 	mutex_unlock(&mi2s_intf_conf[index].lock);
@@ -6012,7 +6016,7 @@ static struct snd_soc_dai_link ext_disp_be_dai_link[] = {
 		.ignore_suspend = 1,
 	},
 };
-
+//suzhiguang,different projects use different smartpa,2018-04-10
 static struct snd_soc_dai_link msm_mi2s_be_dai_links[] = {
 	{
 		.name = LPASS_BE_PRI_MI2S_RX,
@@ -6106,8 +6110,8 @@ static struct snd_soc_dai_link msm_mi2s_be_dai_links[] = {
 		.stream_name = "Quaternary MI2S Playback",
 		.cpu_dai_name = "msm-dai-q6-mi2s.3",
 		.platform_name = "msm-pcm-routing",
-		.codec_name = "msm-stub-codec.1",
-		.codec_dai_name = "msm-stub-rx",
+        .codec_name = "msm-stub-codec.1",
+        .codec_dai_name = "msm-stub-rx",
 		.no_pcm = 1,
 		.dpcm_playback = 1,
 		.id = MSM_BACKEND_DAI_QUATERNARY_MI2S_RX,
@@ -6225,8 +6229,9 @@ static struct snd_soc_dai_link msm_mi2s_be_dai_links_max[] = {
 		.stream_name = "Quaternary MI2S Playback",
 		.cpu_dai_name = "msm-dai-q6-mi2s.3",
 		.platform_name = "msm-pcm-routing",
-		.codec_name = "max98927", //"msm-stub-codec.1",
-		.codec_dai_name = "max98927-aif1", //"msm-stub-rx",
+//su
+        .codec_name = "max98927", //"msm-stub-codec.1",
+        .codec_dai_name = "max98927-aif1", //"msm-stub-rx",
 		.no_pcm = 1,
 		.dpcm_playback = 1,
 		.id = MSM_BACKEND_DAI_QUATERNARY_MI2S_RX,
@@ -6240,8 +6245,8 @@ static struct snd_soc_dai_link msm_mi2s_be_dai_links_max[] = {
 		.stream_name = "Quaternary MI2S Capture",
 		.cpu_dai_name = "msm-dai-q6-mi2s.3",
 		.platform_name = "msm-pcm-routing",
-		.codec_name = "max98927", //"msm-stub-codec.1",
-		.codec_dai_name = "max98927-aif1",  //"msm-stub-tx",
+        .codec_name = "max98927", //"msm-stub-codec.1",
+        .codec_dai_name = "max98927-aif1",  //"msm-stub-tx",
 		.no_pcm = 1,
 		.dpcm_capture = 1,
 		.id = MSM_BACKEND_DAI_QUATERNARY_MI2S_TX,
@@ -6251,11 +6256,18 @@ static struct snd_soc_dai_link msm_mi2s_be_dai_links_max[] = {
 	},
 };
 
-static struct snd_soc_dai_link_component tfa98xx_dai_link_component[] = {
-	{
-		.name= "tfa98xx.2-0034",
-		.dai_name="tfa98xx-aif-2-34",
-	},
+static struct snd_soc_dai_link_component tfa98xx_dai_link_component[]=
+{
+         {
+                 .name= "tfa98xx.2-0034",
+                 .dai_name="tfa98xx-aif-2-34",
+         },
+		 #if 0
+          {
+                 .name= "tfa98xx.2-0035",
+                 .dai_name="tfa98xx-aif-2-35",
+         },
+		 #endif
 };
 
 static struct snd_soc_dai_link msm_mi2s_be_dai_links_tfa[] = {
@@ -6351,8 +6363,10 @@ static struct snd_soc_dai_link msm_mi2s_be_dai_links_tfa[] = {
 		.stream_name = "Quaternary MI2S Playback",
 		.cpu_dai_name = "msm-dai-q6-mi2s.3",
 		.platform_name = "msm-pcm-routing",
-		.codecs = tfa98xx_dai_link_component,
-		.num_codecs = ARRAY_SIZE(tfa98xx_dai_link_component),
+		//.codec_name = "msm-stub-codec.1",
+		//.codec_dai_name = "msm-stub-rx",
+        .codecs=tfa98xx_dai_link_component,
+        .num_codecs=ARRAY_SIZE(tfa98xx_dai_link_component),
 		.no_pcm = 1,
 		.dpcm_playback = 1,
 		.id = MSM_BACKEND_DAI_QUATERNARY_MI2S_RX,
@@ -6366,8 +6380,10 @@ static struct snd_soc_dai_link msm_mi2s_be_dai_links_tfa[] = {
 		.stream_name = "Quaternary MI2S Capture",
 		.cpu_dai_name = "msm-dai-q6-mi2s.3",
 		.platform_name = "msm-pcm-routing",
-		.codecs = tfa98xx_dai_link_component,
-		.num_codecs = ARRAY_SIZE(tfa98xx_dai_link_component),
+		//.codec_name = "msm-stub-codec.1",
+		//.codec_dai_name = "msm-stub-tx",
+        .codecs=tfa98xx_dai_link_component,
+        .num_codecs=ARRAY_SIZE(tfa98xx_dai_link_component),
 		.no_pcm = 1,
 		.dpcm_capture = 1,
 		.id = MSM_BACKEND_DAI_QUATERNARY_MI2S_TX,
@@ -6871,8 +6887,9 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 	int len_1, len_2, len_3, len_4;
 	int total_links;
 	const struct of_device_id *match;
-	int ret;
-	const char *smartpa_type;
+//suzhiguang,for config smartpa dailink.
+    int ret;
+    const char *smartpa_type;
 
 	match = of_match_node(sdm845_asoc_machine_of_match, dev->of_node);
 	if (!match) {
@@ -6923,42 +6940,44 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 			total_links += ARRAY_SIZE(ext_disp_be_dai_link);
 		}
 
-		if (of_property_read_bool(dev->of_node,
+//suzhiguang,config smartpa dailink
+        if (of_property_read_bool(dev->of_node,
 					  "qcom,mi2s-audio-intf")) {
-			ret = of_property_read_string(dev->of_node,
-						"op,smartpa", &smartpa_type);
-			if (ret) {
-				pr_err("read smartpa type error\n");
-			} else {
-				pr_err("smartpa dts config is %s\n", smartpa_type);
-				if (smartpa_present) {
-					pr_err("smartpa_present\n");
-					if (!strcmp(smartpa_type, "max98927")) {
-						memcpy(msm_tavil_snd_card_dai_links + total_links,
-						   msm_mi2s_be_dai_links_max,
-						   sizeof(msm_mi2s_be_dai_links_max));
-						total_links += ARRAY_SIZE(msm_mi2s_be_dai_links_max);
-					} else if(!strcmp(smartpa_type, "tfa98xx")) {
-						memcpy(msm_tavil_snd_card_dai_links + total_links,
-						   msm_mi2s_be_dai_links_tfa,
-						   sizeof(msm_mi2s_be_dai_links_tfa));
-						total_links += ARRAY_SIZE(msm_mi2s_be_dai_links_tfa);
-					} else {
-						memcpy(msm_tavil_snd_card_dai_links + total_links,
-							msm_mi2s_be_dai_links,
-							sizeof(msm_mi2s_be_dai_links));
-						total_links += ARRAY_SIZE(msm_mi2s_be_dai_links);
-						pr_err("no smartpa dts config match,use default\n");
-					}
-				} else {
-					memcpy(msm_tavil_snd_card_dai_links + total_links,
-						msm_mi2s_be_dai_links,
-						sizeof(msm_mi2s_be_dai_links));
-					total_links += ARRAY_SIZE(msm_mi2s_be_dai_links);
-					pr_err("no smartpa found,use default\n");
-				}
-			}
-		}
+            ret = of_property_read_string(dev->of_node,
+                        "op,smartpa", &smartpa_type);
+            if (ret) {
+                pr_err("read smartpa type error\n");
+            }
+            else {
+                pr_err("smartpa dts config is %s\n", smartpa_type);
+                if(smartpa_present) {
+                    pr_err("smartpa_present\n");
+                    if(!strcmp(smartpa_type, "max98927")) {
+                        memcpy(msm_tavil_snd_card_dai_links + total_links,
+                           msm_mi2s_be_dai_links_max,
+                           sizeof(msm_mi2s_be_dai_links_max));
+                        total_links += ARRAY_SIZE(msm_mi2s_be_dai_links_max);
+                    } else if(!strcmp(smartpa_type, "tfa98xx")) {
+                        memcpy(msm_tavil_snd_card_dai_links + total_links,
+                           msm_mi2s_be_dai_links_tfa,
+                           sizeof(msm_mi2s_be_dai_links_tfa));
+                        total_links += ARRAY_SIZE(msm_mi2s_be_dai_links_tfa);
+                    } else {
+                        memcpy(msm_tavil_snd_card_dai_links + total_links,
+                            msm_mi2s_be_dai_links,
+                            sizeof(msm_mi2s_be_dai_links));
+                        total_links += ARRAY_SIZE(msm_mi2s_be_dai_links);
+                        pr_err("no smartpa dts config match,use default\n");
+                    }
+                }else {
+                    memcpy(msm_tavil_snd_card_dai_links + total_links,
+                        msm_mi2s_be_dai_links,
+                        sizeof(msm_mi2s_be_dai_links));
+                    total_links += ARRAY_SIZE(msm_mi2s_be_dai_links);
+                    pr_err("no smartpa found,use default\n");
+                }
+            }
+        }
 
 		if (of_property_read_bool(dev->of_node,
 					  "qcom,auxpcm-audio-intf")) {
@@ -7285,7 +7304,6 @@ static int msm_asoc_machine_probe(struct platform_device *pdev)
 	}
 	np = pdev->dev.of_node;
 
-	dev_err(&pdev->dev, "%s enter\n",__func__);
 	pdata = devm_kzalloc(&pdev->dev,
 			sizeof(struct msm_asoc_mach_data), GFP_KERNEL);
 	if (!pdata)
@@ -7419,76 +7437,76 @@ static int msm_asoc_machine_probe(struct platform_device *pdev)
 		pdata->us_euro_gpio_p = of_parse_phandle(pdev->dev.of_node,
 					"qcom,us-euro-gpios", 0);
 	if (!gpio_is_valid(pdata->us_euro_gpio) && (!pdata->us_euro_gpio_p)) {
-		dev_dbg(&pdev->dev, "property %s not detected in node %s",
+		pr_err("property %s not detected in node %s",
 			"qcom,us-euro-gpios", pdev->dev.of_node->full_name);
 	} else {
-		dev_dbg(&pdev->dev, "%s detected",
-			"qcom,us-euro-gpios");
+		pr_err("%s detected\n", "qcom,us-euro-gpios");
 		wcd_mbhc_cfg.swap_gnd_mic = msm_swap_gnd_mic;
 	}
 
 	if (of_find_property(pdev->dev.of_node, usb_c_dt, NULL))
 		wcd_mbhc_cfg.swap_gnd_mic = msm_swap_gnd_mic;
 
-	if (of_property_read_bool(np, "op,usb_sw") && !fsa4480_enable) {
-		pr_err("%s usb_sw find\n", __func__);
-		if (audio_adapter_flag)
-			pr_err("%s audio_adapter_flag = %d\n", __func__, audio_adapter_flag);
-		mbhc_sw_gpio = of_get_named_gpio(np, "mbhc_sw", 0);
-		if (mbhc_sw_gpio < 0) {
-			pr_err("mbhc_sw_gpio of get gpio failed\n");
-		} else {
-			gpio_free(mbhc_sw_gpio);
-			ret = devm_gpio_request_one(&pdev->dev, mbhc_sw_gpio,
-				GPIOF_OUT_INIT_HIGH, "mbhc sw gpio");
-			if (ret) {
-				pr_err("%s devm_gpio_request_one mbhc_sw_gpio failed\n", __func__);
+    pr_err("%s: fsa4480_enable is %s\n", __func__, fsa4480_enable ? "true": "false");
+        if (of_property_read_bool(np, "op,usb_sw") && !fsa4480_enable) {
+			pr_err("%s usb_sw find\n",__func__);
+if (audio_adapter_flag)
+	pr_err("%s audio_adapter_flag = %d\n",__func__,audio_adapter_flag);
+			mbhc_sw_gpio = of_get_named_gpio(np, "mbhc_sw", 0);
+			if (mbhc_sw_gpio < 0){
+				pr_err("mbhc_sw_gpio of get gpio failed\n");
+			} else {
+				gpio_free(mbhc_sw_gpio);
+				ret = devm_gpio_request_one(&pdev->dev, mbhc_sw_gpio,
+					GPIOF_OUT_INIT_HIGH, "mbhc sw gpio");
+				if (ret) {
+					pr_err("%s devm_gpio_request_one mbhc_sw_gpio failed\n",__func__);
+				}
 			}
-		}
 
-		usb_sw_gpio = of_get_named_gpio(np, "usb_sw", 0);
-		if (usb_sw_gpio < 0) {
-			pr_err("usb_sw_gpio of get gpio failed\n");
-		} else {
-			gpio_free(usb_sw_gpio);
-			ret = devm_gpio_request_one(&pdev->dev, usb_sw_gpio,
-				GPIOF_OUT_INIT_LOW, "usb sw gpio");
-			if (ret) {
-				pr_err("%s devm_gpio_request_one usb sw gpio failed\n", __func__);
+			usb_sw_gpio = of_get_named_gpio(np, "usb_sw", 0);
+			if (usb_sw_gpio < 0){
+				pr_err("usb_sw_gpio of get gpio failed\n");
+			} else {
+				gpio_free(usb_sw_gpio);
+				ret = devm_gpio_request_one(&pdev->dev, usb_sw_gpio,
+					GPIOF_OUT_INIT_LOW, "usb sw gpio");
+				if (ret) {
+					pr_err("%s devm_gpio_request_one usb sw gpio failed\n",__func__);
+				}
 			}
-		}
 
-		hp_sw_gpio = of_get_named_gpio(np, "hp_sw", 0);
-		if (hp_sw_gpio < 0) {
-			pr_err("hp_sw_gpio of get gpio failed\n");
-		} else {
-			pr_err("hp_sw_gpio of get gpio success\n");
-			gpio_free(hp_sw_gpio);
-			ret = devm_gpio_request_one(&pdev->dev, hp_sw_gpio,
-				GPIOF_OUT_INIT_LOW, "hp sw gpio");
-			if (ret) {
-				pr_err("%s devm_gpio_request_one hp_sw_gpio failed\n", __func__);
+			hp_sw_gpio = of_get_named_gpio(np, "hp_sw", 0);
+			if (hp_sw_gpio < 0){
+				pr_err("hp_sw_gpio of get gpio failed\n");
+			} else {
+                                pr_err("hp_sw_gpio of get gpio success\n");
+				gpio_free(hp_sw_gpio);
+				ret = devm_gpio_request_one(&pdev->dev, hp_sw_gpio,
+					GPIOF_OUT_INIT_LOW, "hp sw gpio");
+				if (ret) {
+					pr_err("%s devm_gpio_request_one hp_sw_gpio failed\n",__func__);
+				}
 			}
-		}
 
-		ldo_sw_gpio = of_get_named_gpio(np, "ldo_sw", 0);
-		if (ldo_sw_gpio < 0) {
-			pr_err("ldo_sw_gpio of get gpio failed\n");
-		} else {
-			pr_err("ldo_sw_gpio of get gpio success\n");
-			gpio_free(ldo_sw_gpio);
-			ret = devm_gpio_request_one(&pdev->dev, ldo_sw_gpio,
-				GPIOF_OUT_INIT_LOW, "ldo sw gpio");
-			if (ret) {
-				pr_err("%s devm_gpio_request_one ldo_sw_gpio failed\n", __func__);
+			ldo_sw_gpio = of_get_named_gpio(np, "ldo_sw", 0);
+			if (ldo_sw_gpio < 0){
+				pr_err("ldo_sw_gpio of get gpio failed\n");
+			} else {
+                pr_err("ldo_sw_gpio of get gpio success\n");
+				gpio_free(ldo_sw_gpio);
+				ret = devm_gpio_request_one(&pdev->dev, ldo_sw_gpio,
+					GPIOF_OUT_INIT_LOW, "ldo sw gpio");
+				if (ret) {
+					pr_err("%s devm_gpio_request_one ldo_sw_gpio failed\n",__func__);
+				}
+			}
+	        register_cc_notifier_client(&typec_cc_notifier);
+			if (audio_adapter_flag) {
+				pr_err("%s audio_adapter_flag init to handle usbtypeC headset\n",__func__);
+				cc_audio_adapter_detect_callback(NULL, 1, NULL);
 			}
 		}
-		register_cc_notifier_client(&typec_cc_notifier);
-		if (audio_adapter_flag) {
-			pr_err("%s audio_adapter_flag init to handle usbtypeC headset\n", __func__);
-			cc_audio_adapter_detect_callback(NULL, 1, NULL);
-		}
-	}
 
 	wcd_mbhc_cfg.swap_gnd_mic = msm_swap_gnd_mic;
 	ret = msm_prepare_us_euro(card);

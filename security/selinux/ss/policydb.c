@@ -541,21 +541,21 @@ static int policydb_index(struct policydb *p)
 
 	rc = -ENOMEM;
 	p->class_val_to_struct =
-		kzalloc(p->p_classes.nprim * sizeof(*(p->class_val_to_struct)),
+		kcalloc(p->p_classes.nprim, sizeof(*(p->class_val_to_struct)),
 			GFP_KERNEL);
 	if (!p->class_val_to_struct)
 		goto out;
 
 	rc = -ENOMEM;
 	p->role_val_to_struct =
-		kzalloc(p->p_roles.nprim * sizeof(*(p->role_val_to_struct)),
+		kcalloc(p->p_roles.nprim, sizeof(*(p->role_val_to_struct)),
 			GFP_KERNEL);
 	if (!p->role_val_to_struct)
 		goto out;
 
 	rc = -ENOMEM;
 	p->user_val_to_struct =
-		kzalloc(p->p_users.nprim * sizeof(*(p->user_val_to_struct)),
+		kcalloc(p->p_users.nprim, sizeof(*(p->user_val_to_struct)),
 			GFP_KERNEL);
 	if (!p->user_val_to_struct)
 		goto out;
@@ -1097,7 +1097,7 @@ static int str_read(char **strp, gfp_t flags, void *fp, u32 len)
 	if ((len == 0) || (len == (u32)-1))
 		return -EINVAL;
 
-	str = kmalloc(len + 1, flags);
+	str = kmalloc(len + 1, flags | __GFP_NOWARN);
 	if (!str)
 		return -ENOMEM;
 

@@ -88,6 +88,7 @@ void pio_send_control(struct hfi1_devdata *dd, int op)
 	unsigned long flags;
 	int write = 1;	/* write sendctrl back */
 	int flush = 0;	/* re-read sendctrl to make sure it is flushed */
+	int i;
 
 	spin_lock_irqsave(&dd->sendctrl_lock, flags);
 
@@ -97,9 +98,13 @@ void pio_send_control(struct hfi1_devdata *dd, int op)
 		reg |= SEND_CTRL_SEND_ENABLE_SMASK;
 	/* Fall through */
 	case PSC_DATA_VL_ENABLE:
+		mask = 0;
+		for (i = 0; i < ARRAY_SIZE(dd->vld); i++)
+			if (!dd->vld[i].mtu)
+				mask |= BIT_ULL(i);
 		/* Disallow sending on VLs not enabled */
-		mask = (((~0ull) << num_vls) & SEND_CTRL_UNSUPPORTED_VL_MASK) <<
-				SEND_CTRL_UNSUPPORTED_VL_SHIFT;
+		mask = (mask & SEND_CTRL_UNSUPPORTED_VL_MASK) <<
+			SEND_CTRL_UNSUPPORTED_VL_SHIFT;
 		reg = (reg & ~SEND_CTRL_UNSUPPORTED_VL_SMASK) | mask;
 		break;
 	case PSC_GLOBAL_DISABLE:
@@ -855,8 +860,9 @@ struct send_context *sc_alloc(struct hfi1_devdata *dd, int type,
 		 * so head == tail can mean empty.
 		 */
 		sc->sr_size = sci->credits + 1;
-		sc->sr = kzalloc_node(sizeof(union pio_shadow_ring) *
-				sc->sr_size, GFP_KERNEL, numa);
+		sc->sr = kcalloc_node(sc->sr_size,
+				      sizeof(union pio_shadow_ring),
+				      GFP_KERNEL, numa);
 		if (!sc->sr) {
 			sc_free(sc);
 			return NULL;
@@ -1950,9 +1956,9 @@ int init_pervl_scs(struct hfi1_devdata *dd)
 	hfi1_init_ctxt(dd->vld[15].sc);
 	dd->vld[15].mtu = enum_to_mtu(OPA_MTU_2048);
 
-	dd->kernel_send_context = kzalloc_node(dd->num_send_contexts *
-					sizeof(struct send_context *),
-					GFP_KERNEL, dd->node);
+	dd->kernel_send_context = kcalloc_node(dd->num_send_contexts,
+					       sizeof(struct send_context *),
+					       GFP_KERNEL, dd->node);
 	if (!dd->kernel_send_context)
 		goto freesc15;
 
