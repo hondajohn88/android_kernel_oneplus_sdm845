@@ -1548,12 +1548,12 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-timing-switch-command",
 	"qcom,mdss-dsi-post-mode-switch-on-command",
 	"qcom,mdss-dsi-panel-acl-command",
+	"qcom,mdss-dsi-panel-hbm-off-command",
 	"qcom,mdss-dsi-panel-hbm-on-command",//464
 	"qcom,mdss-dsi-panel-hbm-on-command-2",//498
 	"qcom,mdss-dsi-panel-hbm-on-command-3",//532
 	"qcom,mdss-dsi-panel-hbm-on-command-4",//566
 	"qcom,mdss-dsi-panel-hbm-on-command-5",//600
-	"qcom,mdss-dsi-panel-hbm-off-command",
 	"qcom,mdss-dsi-panel-aod-on-command-1",//10-alpm
 	"qcom,mdss-dsi-panel-aod-on-command-2",//50
 	"qcom,mdss-dsi-panel-aod-off-command",
@@ -1609,12 +1609,12 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-timing-switch-command-state",
 	"qcom,mdss-dsi-post-mode-switch-on-command-state",
 	"qcom,mdss-dsi-acl-command-state",
+	"qcom,mdss-dsi-hbm-off-command-state",//off
 	"qcom,mdss-dsi-hbm-on-command-state",//464
 	"qcom,mdss-dsi-hbm-on-command-state",//498
 	"qcom,mdss-dsi-hbm-on-command-state",//532
 	"qcom,mdss-dsi-hbm-on-command-state",//566
 	"qcom,mdss-dsi-hbm-on-command-state",//600
-	"qcom,mdss-dsi-hbm-off-command-state",//off
 	"qcom,mdss-dsi-aod-on-command-state",// 1
 	"qcom,mdss-dsi-aod-on-command-state",// 2
 	"qcom,mdss-dsi-aod-off-command-state",//off
@@ -3936,8 +3936,8 @@ int dsi_panel_enable(struct dsi_panel *panel)
         if (panel->adaption_mode)
             dsi_panel_set_adaption_mode(panel, panel->adaption_mode);
 
-        if (panel->hbm_mode)
-            dsi_panel_set_hbm_mode(panel, panel->hbm_mode);
+	if (panel->hbm_mode)
+		dsi_panel_apply_hbm_mode(panel);
 
 	if(panel->aod_mode==2){
 		rc = dsi_panel_set_aod_mode(panel, 2);
@@ -4181,12 +4181,12 @@ int dsi_panel_set_hbm_mode(struct dsi_panel *panel, int level)
     break;
 
     case 1:
-        count = mode->priv_info->cmd_sets[DSI_CMD_SET_HBM_ON].count;
+        count = mode->priv_info->cmd_sets[DSI_CMD_SET_HBM_ON_1].count;
         if (!count) {
             pr_err("This panel does not support HBM mode.\n");
             goto error;
         } else {
-            rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_HBM_ON);
+            rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_HBM_ON_1);
         }
     break;
 
@@ -4531,3 +4531,28 @@ int dsi_panel_set_aod_mode(struct dsi_panel *panel, int level)
 return rc;
 }
 
+int dsi_panel_apply_hbm_mode(struct dsi_panel *panel)
+{
+	static const enum dsi_cmd_set_type type_map[] = {
+		DSI_CMD_SET_HBM_OFF,
+		DSI_CMD_SET_HBM_ON_1,
+		DSI_CMD_SET_HBM_ON_2,
+		DSI_CMD_SET_HBM_ON_3,
+		DSI_CMD_SET_HBM_ON_4,
+		DSI_CMD_SET_HBM_ON_5
+	};
+
+	enum dsi_cmd_set_type type;
+	int rc;
+
+	if (panel->hbm_mode >= 0 && panel->hbm_mode < ARRAY_SIZE(type_map))
+		type = type_map[panel->hbm_mode];
+	else
+		type = DSI_CMD_SET_HBM_OFF;
+
+	mutex_lock(&panel->panel_lock);
+	rc = dsi_panel_tx_cmd_set(panel, type);
+	mutex_unlock(&panel->panel_lock);
+
+	return rc;
+}
